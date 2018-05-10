@@ -49,6 +49,9 @@
 
 - (void)handleRefresh {
     [self requestBucketList];
+    
+    // Or can use APISender to send request.
+//    [self usingAPISenderToRequestBucketList];
 }
 
 - (void)requestBucketList {
@@ -56,7 +59,22 @@
     [[AppDelegate globalService] listBucketsWithInput:input completion:^(QSListBucketsOutput *output, NSHTTPURLResponse *response, NSError *error) {
         self.bucketsOutput = output;
         [self.tableView reloadData];
-        
+        [self.refreshControl endRefreshing];
+    }];
+}
+
+// Using APISender to request bucket list.
+- (void)usingAPISenderToRequestBucketList {
+    QSListBucketsInput *input = [QSListBucketsInput empty];
+    QSAPISender *sender = [[AppDelegate globalService] listBucketsSenderWithInput:input].sender;
+    
+    // Can use sender to add custom header
+    [sender addHeaders:@{@"Custom-Header-Key":@"Custom-Header-Value"}];
+    
+    // Send api request
+    [sender sendListBucketsAPIWithCompletion:^(QSListBucketsOutput *output, NSHTTPURLResponse *response, NSError *error) {
+        self.bucketsOutput = output;
+        [self.tableView reloadData];
         [self.refreshControl endRefreshing];
     }];
 }

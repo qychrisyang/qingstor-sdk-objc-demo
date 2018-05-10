@@ -19,28 +19,59 @@
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Register QingStorSDK
-    NSURL *url = [NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"Config" ofType:@"plist"]];
-    [QSRegistry registerFromPlist:url error:nil];
+    // Using `APIContext` to initialize QingStor service.
+    [self usingAPIContextToInitializeQingStorService];
     
-    QSSignatureTypeModel *signatureType = [QSSignatureTypeModel header];
-    QSQingStorSigner *qingStorSigner = [[QSQingStorSigner alloc] initWithSignatureType:signatureType];
-    QSCustomizedSigner *customized = [[QSCustomizedSigner alloc] initWithSignatureType:signatureType handler:^(QSCustomizedSigner *signer, NSString *plainString, QSRequestBuilder *builder, void (^completion)(QSSignatureResultModel *)) {
-        switch (signer.signatureTypeModel.type) {
-            case QSSignatureTypeQuery:
-                completion([qingStorSigner querySignatureStringFrom:builder timeoutSeconds:signer.signatureTypeModel.timeoutSeconds]);
-                break;
-                
-            case QSSignatureTypeHeader:
-                completion([qingStorSigner headerSignatureStringFrom:builder]);
-                break;
-        }
-    }];
-    self.qsService = [[QSQingStor alloc] initWithCustomizedSigner:customized];
+    // Or you can use `Registry` to register QingStor service config.
+//    [self usingRegistryToInitializeQingStorService];
+    
+    // Or you might want to use customized signer to calculate signature string.
+//    [self usingCustomizedSignerToCalculateSignatureStringAndInitializeQingStorService];
     
     return YES;
 }
 
+// Using `APIContext` to initialize QingStor service.
+- (void)usingAPIContextToInitializeQingStorService {
+    NSURL *url = [NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"Config" ofType:@"plist"]];
+    QSAPIContext *context = [[QSAPIContext alloc] initWithPlist:url error:nil];
+    self.qsService = [[QSQingStor alloc] initWithContext:context];
+}
+
+// Using `Registry` to register QingStor service config.
+- (void)usingRegistryToInitializeQingStorService {
+    NSURL *url = [NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"Config" ofType:@"plist"]];
+    [QSRegistry registerFromPlist:url error:nil];
+    self.qsService = [[QSQingStor alloc] init];
+}
+
+// Using customized signer to calculate signature string.
+- (void)usingCustomizedSignerToCalculateSignatureStringAndInitializeQingStorService {
+    NSURL *url = [NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"Config" ofType:@"plist"]];
+    QSAPIContext *context = [[QSAPIContext alloc] initWithPlist:url error:nil];
+    QSSignatureTypeModel *signatureType = [QSSignatureTypeModel header];
+    QSCustomizedSigner *signer = [[QSCustomizedSigner alloc] initWithSignatureType:signatureType handler:^(QSCustomizedSigner *signer, NSString *plainString, QSRequestBuilder *builder, void (^completion)(QSSignatureResultModel *)) {
+        // Setting http date header of used to calculate the signature.
+        [builder addHeaders:@{@"Date":@"The date of used to calculate the signature"}];
+        
+        NSString *signatureString = @"The signature string of you calculated";
+        NSString *accessKey = @"The access key of you applied from QingCloud";
+        QSSignatureResultModel *result = nil;
+        switch (signer.signatureTypeModel.type) {
+            case QSSignatureTypeQuery:
+                result = [QSSignatureResultModel queryWithSignature:signatureString
+                                                          accessKey:accessKey
+                                                            expires:@(signer.signatureTypeModel.timeoutSeconds)];
+                break;
+                
+            case QSSignatureTypeHeader:
+                result = [QSSignatureResultModel headerWithSignature:signatureString accessKey:accessKey];
+                break;
+        }
+        completion(result);
+    }];
+    self.qsService = [[QSQingStor alloc] initWithContext:context customizedSigner:signer];
+}
 
 - (void)applicationWillResignActive:(UIApplication *)application {
     // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.

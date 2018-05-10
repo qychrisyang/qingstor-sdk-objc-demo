@@ -14,6 +14,7 @@
 @property (nonatomic, strong) QSBucketModel *bucketModel;
 @property (nonatomic, strong) QSBucket *bucket;
 @property (nonatomic, strong) QSListObjectsOutput *objectsOutput;
+@property (strong, nonatomic) IBOutlet UIProgressView *progressView;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @end
 
@@ -43,6 +44,7 @@
 }
 
 - (void)setupView {
+    self.tableView.tableHeaderView = nil;
     self.tableView.tableFooterView = [[UIView alloc] init];
     
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
@@ -70,25 +72,11 @@
 
 - (void)requestObjectList {
     QSListObjectsInput *input = [QSListObjectsInput empty];
-    
-//    [self.bucket listObjectsWithInput:input completion:^(QSListObjectsOutput *output, NSHTTPURLResponse *response, NSError *error) {
-//        self.objectsOutput = output;
-//        [self.tableView reloadData];
-//
-//        [self.refreshControl endRefreshing];
-//    }];
-    
-    QSAPISender *sender = [self.bucket listObjectsSenderWithInput:input].sender;
-    [sender sendListObjectsAPIWithCompletion:^(QSListObjectsOutput *output, NSHTTPURLResponse *response, NSError *error) {
-        self.objectsOutput = (QSListObjectsOutput *)output;
+    [self.bucket listObjectsWithInput:input completion:^(QSListObjectsOutput *output, NSHTTPURLResponse *response, NSError *error) {
+        self.objectsOutput = output;
         [self.tableView reloadData];
-        
         [self.refreshControl endRefreshing];
     }];
-    
-//    [sender.sender buildRequestWithCompletion:^(NSURLRequest *request, NSError *error) {
-//        NSLog("request: %@", request);
-//    }];
 }
 
 - (void)pickImage {
@@ -96,7 +84,7 @@
     void(^handler)(UIImagePickerControllerSourceType type) = ^(UIImagePickerControllerSourceType type) {
         UIImagePickerController *pickerVC = [[UIImagePickerController alloc] init];
         pickerVC.delegate = self;
-        pickerVC.allowsEditing = YES;
+        pickerVC.allowsEditing = NO;
         pickerVC.sourceType = type;
         
         [self presentViewController:pickerVC animated:YES completion:nil];
@@ -169,20 +157,25 @@
     }
     
     NSString *fileName = [NSString stringWithFormat:@"%ld.%@", (long)[[NSDate date] timeIntervalSince1970], pathExtension];
-    if ([info[UIImagePickerControllerEditedImage] isKindOfClass:[UIImage class]]) {
+    if ([info[UIImagePickerControllerOriginalImage] isKindOfClass:[UIImage class]]) {
         UIBarButtonItem *originRightBarButtonItem = self.navigationItem.rightBarButtonItem;
         
         [self.spinner startAnimating];
         self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:self.spinner];
+        self.tableView.tableHeaderView = self.progressView;
         
-        NSData *data = UIImageJPEGRepresentation((UIImage *)info[UIImagePickerControllerEditedImage], .8f);
+        NSData *data = UIImageJPEGRepresentation((UIImage *)info[UIImagePickerControllerOriginalImage], .8f);
         QSPutObjectInput *input = [QSPutObjectInput empty];
         input.contentLength = data.length;
         input.contentType = contentType;
         input.bodyInputStream = [[NSInputStream alloc] initWithData:data];
-        [self.bucket putObjectWithObjectKey:fileName input:input completion:^(QSPutObjectOutput *output, NSHTTPURLResponse *response, NSError *error) {
-            [self beginRefresh];
+        [self.bucket putObjectWithObjectKey:fileName input:input progress:^(NSProgress *progress) {
+            self.progressView.progress = progress.fractionCompleted;
+        } completion:^(QSPutObjectOutput *output, NSHTTPURLResponse *response, NSError *error) {
+            [self handleRefresh];
             self.navigationItem.rightBarButtonItem = originRightBarButtonItem;
+            self.tableView.tableHeaderView = nil;
+            self.progressView.progress = 0;
         }];
     }
 }
